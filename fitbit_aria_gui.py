@@ -20,7 +20,10 @@ import fitbit
 from gather_keys_oauth2 import OAuth2Server
 from savitzky_golay import savitzky_golay
 
-ranges = [(  'Week', 14), 
+import os
+__location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
+
+ranges = [(  '2 Weeks', 14), 
 			('Month', 30), 
 			('3 Months', 90),
 			('6 Months', 180),
@@ -47,7 +50,7 @@ class FitbitPlot(object):
 		client_secret = "2ac472eded364ba883fed8001a93e3ef"
 
 		try:
-			f = open('auth.txt', 'r')
+			f = open(os.path.join(__location__, 'auth.txt'), 'r')
 			try:
 				lines = f.read().splitlines()
 				try:
@@ -65,7 +68,7 @@ class FitbitPlot(object):
 		self.authd_client = fitbit.Fitbit(client_ID, client_secret, access_token=self.access_token, refresh_token=self.refresh_token, system='en_AU')
 
 	def get_tokens(self, client_ID, client_secret, access_token=None, refresh_token=None):
-		if (access_token==None):
+		if (access_token==None or refresh_token==None):
 			server = OAuth2Server(client_ID, client_secret)
 			server.browser_authorize()
 			auth = server.oauth
@@ -76,20 +79,21 @@ class FitbitPlot(object):
 		self.access_token = auth.token['access_token']
 		self.refresh_token = auth.token['refresh_token']
 
-		f = open('auth.txt', 'w')
+		f = open(os.path.join(__location__, 'auth.txt'), 'w')
 		f.write(self.access_token + "\n" + self.refresh_token)
 		f.close()
 
 	# Handle clicking on radio buttons
 	def change_time_period(self, tp):
 		if not self.has_fetched:
-			self.get_data_and_plot()
+			self.get_data()
 			self.has_fetched = True
-
 		if tp == 'All time':
-			offset = max(self.date)-min(self.date)
+			offset = int(max(self.date)-min(self.date))
 		else:
 			offset = [t[1] for t in ranges if t[0] == tp][0]
+		self.plot(offset)
+		
 		x_min = max(self.date)-offset
 		x_max = max(self.date)
 		min_date_index = min(range(len(self.date)), key=lambda i: abs(self.date[i]-x_min))
@@ -98,12 +102,9 @@ class FitbitPlot(object):
 		self.axes.set_xlim(x_min-(x_max-x_min)*0.01,x_max+(x_max-x_min)*0.01)
 		self.axes.set_ylim(y_min-(y_max-y_min)*0.01,y_max+(y_max-y_min)*0.01)
 
-		min_date_index = min(range(len(self.x_interp)), key=lambda i: abs(self.x_interp[i]-x_min))
-		self.coloured_line.set_norm(plt.Normalize(-max(self.slope_interp[min_date_index:]), max(self.slope_interp[min_date_index:])))
-
 		self.figure.canvas.draw_idle()
 
-	def get_data_and_plot(self):
+	def get_data(self):
 		wait = wx.BusyCursor()
 		# Pull all bodyweight data
 		for i in range(5):
@@ -122,49 +123,48 @@ class FitbitPlot(object):
 			self.date.append(dates.date2num(dt))
 			weight.append(entry['value'])
 
-		# Moving average
-		N=7 # number of entries to average over
 		self.weight = array(weight,dtype=float)
-		#avg = convolve(self.weight, ones((N,))/N, mode='valid').tolist()
-		avg = savitzky_golay(self.weight, 7, 3).tolist()
-		#avg_x = self.date[(len(self.date) - len(avg))/2:-(len(self.date) - len(avg))/2]
-		avg_x=self.date
+		del wait
 
-		# Clear Nones
-		# for i,val in enumerate(avg):
-		# 	if val in avg or val==None:
-		# 		del(avg[i])
-		# 		del(avg_x[i])
+
+	def plot(self, N=14):
+		# Smooth time series
+		window_size = N/2+1 if (N/2)%2==0 else N/2
+		print window_size
+		smoothed = savitzky_golay(self.weight, window_size , 3).tolist()[-N-5:]
+		x=self.date[-N-5:]
 
 		# Find slope for colouration of interped line
-		slope = diff(avg)
+		slope = diff(smoothed)
 
-		# Define two interpolation functions for moving average and slope, also corresponding x values
-		f_avg = InterpolatedUnivariateSpline(avg_x, avg, ext=1)
-		f_slope = InterpolatedUnivariateSpline([x+(avg_x[1]-avg_x[0])/2 for x in avg_x[:-1]], slope,k=1)
-		self.x_interp = linspace(min(self.date), max(self.date), num=2000, endpoint=True)
+		print len(x), len (slope)
+		f = InterpolatedUnivariateSpline(x, smoothed,ext=1)
+		f_slope = InterpolatedUnivariateSpline([a+(x[1]-x[0])/2 for a in x[:-1]], slope,k=1)
+		x_interp = linspace(min(x), max(x), num=1000, endpoint=True)
 
 		# Create a set of line segments so that we can color them individually
 		# This creates the points as a N x 1 x 2 array so that we can stack points
 		# together easily to get the segments. The segments array for line collection
 		# needs to be numlines x points per line x 2 (x and y)
-		points = array([self.x_interp, f_avg(self.x_interp)]).T.reshape(-1, 1, 2)
+		points = array([x_interp, f(x_interp)]).T.reshape(-1, 1, 2)
 		segments = concatenate([points[:-1], points[1:]], axis=1)
 
 		# Colour average based on slope
 		self.coloured_line = LineCollection(segments, cmap=plt.get_cmap('RdYlBu_r'),
 			norm=plt.Normalize(-max(slope), max(slope)))
-		self.slope_interp = f_slope(self.x_interp)
-		self.coloured_line.set_array(self.slope_interp)
+		self.coloured_line.set_array(f_slope(x_interp))
 		self.coloured_line.set_linewidth(5)
 		self.coloured_line.set_label('Moving average (%d days)'%N)
 
-		# Plot
-		print "\n\n"
-		print len(self.date), len(weight)
-		print "\n\n"
-		self.axes.plot_date(self.date, weight, '-o', label='Logged weight',zorder=1, color='darkgrey', linewidth=2)
-		self.figure.gca().add_collection(self.coloured_line)
+		# Plot actual data
+		self.axes.plot_date(self.date, self.weight, '-', label='Logged weight',zorder=1, color='darkgrey', linewidth=1)
+		# Plot smoothed line
+		try:
+			self.figure.gca().collections.remove(self.col)
+		except AttributeError: 
+			pass
+		finally:
+			self.col = self.figure.gca().add_collection(self.coloured_line)
 
 		# Axis label formatting
 		date_locator = dates.AutoDateLocator()
@@ -175,19 +175,18 @@ class FitbitPlot(object):
 		self.axes.set_ylabel('Weight')
 		self.axes.set_title('Fitbit Aria log')
 
-		# Custom mouseover and mouse crosshair
-		def format_coord(x, y):
-			closest_date = min(self.date, key=lambda l:abs(l-x))
-			return 'date='+dates.num2date(x).strftime('%d/%m/%Y') + ', weight=%1.1f '%float(weight[self.date.index(closest_date)])
-		self.axes.format_coord = format_coord
+		# # Custom mouseover and mouse crosshair
+		# def format_coord(x, y):
+		# 	closest_date = min(self.date, key=lambda l:abs(l-x))
+		# 	return 'date='+dates.num2date(x).strftime('%d/%m/%Y') + ', weight=%1.1f '%float(self.weight[self.date.index(closest_date)])
+		# self.axes.format_coord = format_coord
 
-		self.figure.autofmt_xdate()
-		cursor = Cursor(self.axes, useblit=True, horizOn=False, color='grey', linewidth=1 )
-		del wait
+		# self.figure.autofmt_xdate()
+		# cursor = Cursor(self.axes, useblit=True, horizOn=False, color='grey', linewidth=1 )
 
 class CanvasFrame(wx.Frame):
 	def __init__(self, parent, title):
-		wx.Frame.__init__(self, parent, -1, title, size=wx.Size(550, 350))
+		wx.Frame.__init__(self, parent, -1, title, size=wx.Size(800, 300))
 		self.SetBackgroundColour(wxc.NamedColour("WHITE"))
 
 		self.fitbit_plot = FitbitPlot(self)
