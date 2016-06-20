@@ -17,6 +17,8 @@ from datetime import datetime
 
 import fitbit
 
+from ConfigParser import SafeConfigParser
+
 from gather_keys_oauth2 import OAuth2Server
 from savitzky_golay import savitzky_golay
 
@@ -45,12 +47,16 @@ class FitbitPlot(object):
 		self.has_fetched = False
 
 	def authenticate(self):
-		# Authenticate with Fitbit
-		client_ID = "229GHF"
-		client_secret = "2ac472eded364ba883fed8001a93e3ef"
+		parser = SafeConfigParser()
+		parser.read('config.ini')
 
+		client_ID = parser.get('oauth', 'client_ID')
+		client_secret = parser.get('oauth', 'client_secret')
+
+		# Authenticate with Fitbit
+		print "Authenticating with Fitbit"
 		try:
-			f = open(os.path.join(__location__, 'auth.txt'), 'r')
+			f = open(os.path.join(__location__, 'auth'), 'r')
 			try:
 				lines = f.read().splitlines()
 				try:
@@ -62,10 +68,12 @@ class FitbitPlot(object):
 				f.close()
 			self.get_tokens(client_ID, client_secret, self.access_token, self.refresh_token)
 		except IOError:
+			print "Failed to open auth file"
 			self.get_tokens(client_ID, client_secret)
 
 
 		self.authd_client = fitbit.Fitbit(client_ID, client_secret, access_token=self.access_token, refresh_token=self.refresh_token, system='en_AU')
+		print "Client successfully authenticated"
 
 	def get_tokens(self, client_ID, client_secret, access_token=None, refresh_token=None):
 		if (access_token==None or refresh_token==None):
@@ -73,15 +81,17 @@ class FitbitPlot(object):
 			server.browser_authorize()
 			auth = server.oauth
 		else:
+			print "Authenticating with old access and refesh tokens"
 			auth = fitbit.FitbitOauth2Client(client_ID, client_secret,access_token, refresh_token)
 			auth.refresh_token()
 
 		self.access_token = auth.token['access_token']
 		self.refresh_token = auth.token['refresh_token']
 
-		f = open(os.path.join(__location__, 'auth.txt'), 'w')
+		f = open(os.path.join(__location__, 'auth'), 'w')
 		f.write(self.access_token + "\n" + self.refresh_token)
 		f.close()
+		print "New auth file written"
 
 	# Handle clicking on radio buttons
 	def change_time_period(self, tp):
@@ -186,7 +196,7 @@ class FitbitPlot(object):
 
 class CanvasFrame(wx.Frame):
 	def __init__(self, parent, title):
-		wx.Frame.__init__(self, parent, -1, title, size=wx.Size(800, 300))
+		wx.Frame.__init__(self, parent, -1, title, pos=wx.GetMousePosition(), size=wx.Size(800, 300))
 		self.SetBackgroundColour(wxc.NamedColour("WHITE"))
 
 		self.fitbit_plot = FitbitPlot(self)
@@ -194,25 +204,7 @@ class CanvasFrame(wx.Frame):
 		self.sizer = wx.BoxSizer(wx.VERTICAL)
 		self.add_buttonbar()
 		self.sizer.Add(self.fitbit_plot.canvas, 1, wx.LEFT | wx.TOP | wx.GROW)
-		self.add_toolbar()  # comment this out for no toolbar
-
-		menuBar = wx.MenuBar()
-
-		# File Menu
-		menu = wx.Menu()
-		menu.Append(wx.ID_EXIT, "E&xit\tAlt-X", "Exit this simple sample")
-		menuBar.Append(menu, "&File")
-
-		# Ranges Menu
-		menu = wx.Menu()
-		for i, text in enumerate(ranges):
-			item = wx.MenuItem(menu, i, text[0])
-			item.name = text[0]
-			menu.AppendItem(item)
-			self.Bind(wx.EVT_MENU, self.OnClick, item)
-		menuBar.Append(menu, "&Ranges")
-
-		self.SetMenuBar(menuBar)
+		#self.add_toolbar()  # comment this out for no toolbar
 
 		self.SetSizer(self.sizer)
 		self.Fit()
@@ -249,6 +241,7 @@ class MyApp(wx.App):
 		frame = CanvasFrame(None, "Fitbit Aria Weight Log")
 		self.SetTopWindow(frame)
 		frame.Show(True)
+		frame.Maximize(True)
 		return True
 
 app = MyApp()
