@@ -17,7 +17,7 @@ from datetime import datetime
 
 import fitbit
 
-from ConfigParser import SafeConfigParser
+import configparser
 
 from gather_keys_oauth2 import OAuth2Server
 from savitzky_golay import savitzky_golay
@@ -47,14 +47,14 @@ class FitbitPlot(object):
 		self.has_fetched = False
 
 	def authenticate(self):
-		parser = SafeConfigParser()
-		parser.read('config.ini')
+		parser = configparser.ConfigParser()
+		parser.read(os.path.join(__location__, 'config.ini'))
 
 		client_ID = parser.get('oauth', 'client_ID')
 		client_secret = parser.get('oauth', 'client_secret')
 
 		# Authenticate with Fitbit
-		print "Authenticating with Fitbit"
+		print("Authenticating with Fitbit")
 		try:
 			f = open(os.path.join(__location__, 'auth'), 'r')
 			try:
@@ -67,31 +67,32 @@ class FitbitPlot(object):
 			finally:
 				f.close()
 			self.get_tokens(client_ID, client_secret, self.access_token, self.refresh_token)
-		except IOError:
-			print "Failed to open auth file"
+		except (IOError, FileNotFoundError):
+			print("Failed to open auth file")
 			self.get_tokens(client_ID, client_secret)
 
 
 		self.authd_client = fitbit.Fitbit(client_ID, client_secret, access_token=self.access_token, refresh_token=self.refresh_token, system='en_AU')
-		print "Client successfully authenticated"
+		print("Client successfully authenticated")
 
 	def get_tokens(self, client_ID, client_secret, access_token=None, refresh_token=None):
 		if (access_token==None or refresh_token==None):
+			print("Authenticating with browser.")
 			server = OAuth2Server(client_ID, client_secret)
 			server.browser_authorize()
-			auth = server.oauth
+			token = server.fitbit.client.session.token
 		else:
-			print "Authenticating with old access and refesh tokens"
-			auth = fitbit.FitbitOauth2Client(client_ID, client_secret,access_token, refresh_token)
-			auth.refresh_token()
+			print("Authenticating with old access and refesh tokens")
+			auth = fitbit.FitbitOauth2Client(client_ID, client_secret, access_token, refresh_token)
+			token = auth.refresh_token()
 
-		self.access_token = auth.token['access_token']
-		self.refresh_token = auth.token['refresh_token']
+		self.access_token = token['access_token']
+		self.refresh_token = token['refresh_token']
 
 		f = open(os.path.join(__location__, 'auth'), 'w')
 		f.write(self.access_token + "\n" + self.refresh_token)
 		f.close()
-		print "New auth file written"
+		print("New auth file written")
 
 	# Handle clicking on radio buttons
 	def change_time_period(self, tp):
@@ -140,14 +141,14 @@ class FitbitPlot(object):
 	def plot(self, N=14):
 		# Smooth time series
 		window_size = N/2+1 if (N/2)%2==0 else N/2
-		print window_size
+		print(window_size)
 		smoothed = savitzky_golay(self.weight, window_size , 3).tolist()[-N-5:]
 		x=self.date[-N-5:]
 
 		# Find slope for colouration of interped line
 		slope = diff(smoothed)
 
-		print len(x), len (slope)
+		print(len(x), len (slope))
 		f = InterpolatedUnivariateSpline(x, smoothed,ext=1)
 		f_slope = InterpolatedUnivariateSpline([a+(x[1]-x[0])/2 for a in x[:-1]], slope,k=1)
 		x_interp = linspace(min(x), max(x), num=1000, endpoint=True)
