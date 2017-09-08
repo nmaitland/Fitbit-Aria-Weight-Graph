@@ -120,14 +120,14 @@ class FitbitPlot(object):
         wait = wx.BusyCursor()
         # Pull all bodyweight data
         try:
+            # Try 5 times
             for i in range(5):
-                while True:
-                    try:
-                        bodyweight = self.authd_client.time_series(resource='body/weight', base_date='2015-01-01', end_date='today')
-                    except AttributeError:
-                        self.authenticate()
-                        continue
-                    break
+                try:
+                    bodyweight = self.authd_client.time_series(resource='body/weight', base_date='2015-01-01', end_date='today')
+                except AttributeError:
+                    self.authenticate()
+                    continue
+                break
             # Split data to date and weight lists
             self.date=[]
             weight=[]
@@ -147,7 +147,6 @@ class FitbitPlot(object):
     def plot(self, N=14):
         # Smooth time series
         window_size = N/2+1 if (N/2)%2==0 else N/2
-        print(window_size)
         smoothed = savitzky_golay(self.weight, window_size , 3).tolist()[-N-5:]
         x=self.date[-N-5:]
 
