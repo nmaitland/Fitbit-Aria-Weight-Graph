@@ -123,7 +123,7 @@ class FitbitPlot(object):
             # Try 5 times
             for i in range(5):
                 try:
-                    bodyweight = self.authd_client.time_series(resource='body/weight', base_date='2015-01-01', end_date='today')
+                    bodyweight = self.authd_client.time_series(resource='body/weight', base_date='2016-01-01', end_date='today')
                 except AttributeError:
                     self.authenticate()
                     continue
@@ -146,7 +146,7 @@ class FitbitPlot(object):
 
     def plot(self, N=14):
         # Smooth time series
-        window_size = N/2+1 if (N/2)%2==0 else N/2
+        window_size = int(N/2)+1 if int(N/2)%2==0 else int(N/2)
         smoothed = savitzky_golay(self.weight, window_size , 3).tolist()[-N-5:]
         x=self.date[-N-5:]
 

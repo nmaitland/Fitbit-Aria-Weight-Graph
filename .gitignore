@@ -1,3 +1,4 @@
 *.pyc
 auth
 config.ini
+venv/
