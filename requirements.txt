@@ -21,11 +21,11 @@ pypiwin32==223
 python-dateutil==2.6.1
 pytz==2018.3
 pywin32==301
-requests==2.32.2
+requests==2.32.4
 requests-oauthlib==0.8.0
 scipy==1.10.0
 six==1.11.0
 tempora==1.10
-urllib3==1.26.19
+urllib3==2.6.3
 wrapt==1.10.11
 wxPython==4.0.1
