@@ -1,5 +1,5 @@
 astroid==1.6.1
-certifi==2023.7.22
+certifi==2024.7.4
 chardet==3.0.4
 cheroot==6.0.0
 CherryPy==14.0.0
@@ -21,11 +21,11 @@ pypiwin32==223
 python-dateutil==2.6.1
 pytz==2018.3
 pywin32==301
-requests==2.31.0
+requests==2.32.2
 requests-oauthlib==0.8.0
 scipy==1.10.0
 six==1.11.0
 tempora==1.10
-urllib3==1.26.18
+urllib3==1.26.19
 wrapt==1.10.11
 wxPython==4.0.1
